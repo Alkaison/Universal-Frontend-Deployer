@@ -1,0 +1,31 @@
+name: Frontend Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - dev
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/pull_and_build.yml
+    with:
+      ssh_host: 0.0.0.0
+      ssh_user: deployuser
+      project_path: /home/deployuser/chatapp-frontend
+    secrets:
+      SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+
+  post-deploy:
+    needs: deploy
+    uses: ./.github/workflows/slack_alert_and_healthcheck.yml
+    with:
+      url: https://alkaison.vercel.app
+      deploy_status: success
+      fallback_on_fail: true
+      ssh_host: 0.0.0.0
+      ssh_user: deployuser
+      project_path: /home/deployuser/chatapp-frontend
+    secrets:
+      SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

@@ -1,0 +1,52 @@
+on:
+  workflow_call:
+    inputs:
+      ssh_host:
+        required: true
+        type: string
+      ssh_user:
+        required: true
+        type: string
+      project_path:
+        required: true
+        type: string
+    secrets:
+      SSH_PASSWORD:
+        required: true
+      SLACK_WEBHOOK_URL:
+        required: true
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rollback to Previous Build
+        id: do_rollback
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ inputs.ssh_host }}
+          username: ${{ inputs.ssh_user }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            cd "${{ inputs.project_path }}"
+            echo "🛠️ Rollback: Restoring dist_prev if available."
+            if [ -d dist_prev ]; then
+              rm -rf dist
+              mv dist_prev dist
+              sudo systemctl reload nginx
+              echo "Rollback succeeded."
+            else
+              echo "❌ No previous build (dist_prev) to rollback to."
+              exit 1
+            fi
+
+      - name: Notify Slack of Rollback
+        if: ${{ steps.do_rollback.outcome == 'success' }}
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": ":leftwards_arrow_with_hook: Build failed — rolled back to previous version for `${{ inputs.project_path }}` on `${{ inputs.ssh_host }}`."
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

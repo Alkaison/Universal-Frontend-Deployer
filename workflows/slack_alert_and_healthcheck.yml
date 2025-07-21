@@ -1,0 +1,90 @@
+on:
+  workflow_call:
+    inputs:
+      url:
+        required: true
+        type: string
+      deploy_status:
+        required: true
+        type: string
+      fallback_on_fail:
+        required: false
+        type: boolean
+        default: false
+      ssh_host:
+        required: false
+        type: string
+      ssh_user:
+        required: false
+        type: string
+      project_path:
+        required: false
+        type: string
+    secrets:
+      SSH_PASSWORD:
+        required: false
+      SLACK_WEBHOOK_URL:
+        required: true
+
+jobs:
+  healthcheck:
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.check.outputs.status }}
+    steps:
+      - name: Health check on deployed URL
+        id: check
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ inputs.url }}")
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+
+  notify_success:
+    needs: healthcheck
+    runs-on: ubuntu-latest
+    if: ${{ inputs.deploy_status == 'success' && needs.healthcheck.outputs.status == '200' }}
+    steps:
+      - name: Send Success Slack Notification
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {"text": "✅ Deployment succeeded and is live: ${{ inputs.url }}"}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  notify_failure:
+    needs: healthcheck
+    runs-on: ubuntu-latest
+    if: ${{ needs.healthcheck.outputs.status != '200' }}
+    steps:
+      - name: Send Failure Slack Notification
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {"text": "❌ Deployment failed: URL ${{ inputs.url }} returned HTTP ${{ needs.healthcheck.outputs.status }}."}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  rollback:
+    needs: notify_failure
+    if: ${{ inputs.fallback_on_fail && needs.healthcheck.outputs.status != '200' }}
+    uses: ./.github/workflows/rollback.yml
+    with:
+      ssh_host: ${{ inputs.ssh_host }}
+      ssh_user: ${{ inputs.ssh_user }}
+      project_path: ${{ inputs.project_path }}
+    secrets:
+      SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  notify_rollback_failure:
+    needs: rollback
+    runs-on: ubuntu-latest
+    if: ${{ needs.rollback.result == 'failure' }}
+    steps:
+      - name: Send Rollback Failure Slack Notification
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {"text": "🚨 Rollback failed for: ${{ inputs.url }}. Manual intervention required."}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
