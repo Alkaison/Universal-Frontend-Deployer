@@ -2,7 +2,8 @@
 
 All frontend applications must follow the structure and guidelines below to ensure consistency, security, and automation readiness.
 
-Complete setup instructions are [here](./SETUP.md "Setup File").
+- Complete setup instructions are [here](./SETUP.md "Setup File").
+- Slack Incoming Webhooks setup guide is [here](https://api.slack.com/messaging/webhooks).
 
 ## 📁 Folder Structure
 
